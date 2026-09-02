@@ -1,0 +1,20 @@
+{
+  "appName": "Batch Translator",
+  "version": "1.2.0",
+  "homepage": "https://example.com/download",
+  "features": {
+    "dictionaryMode": true,
+    "aiMode": true,
+    "supportedFiles": ["txt", "json", "csv"]
+  },
+  "messages": {
+    "welcome": "Welcome to use this tool",
+    "error404": "File not found",
+    "done": "Translation finished successfully"
+  },
+  "numbers": [1, 2.5, 3],
+  "links": [
+    "https://example.com/a",
+    "C:\\Users\\test\\file.txt"
+  ]
+}
