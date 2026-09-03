@@ -14,6 +14,9 @@ _DEFAULTS = {
     "api_key": "",
     "model": "deepseek-chat",                    # 例如 deepseek-chat / gpt-4o-mini
     "ai_timeout": 90,
+    # ---- 多接口预设（可保存多个 API Key + 模型，一键切换）----
+    "api_profiles": [],          # [{name, base_url, api_key, model}, ...]
+    "active_profile": "",        # 当前激活的预设名（base_url/api_key/model 即该预设）
     # ---- AI 方向 ----
     "direction": "en2zh",      # 语言对：en2zh / zh2en / ja2zh / auto2zh…
     # ---- 输出 ----
@@ -67,6 +70,52 @@ class Settings:
     @property
     def out_encoding_label(self):
         return _ENC_LABELS.get(self.out_encoding, self.out_encoding)
+
+    # ------------------------------------------------------------------
+    # 多接口预设支持
+    # ------------------------------------------------------------------
+    def ensure_initial_profile(self):
+        """
+        保证至少存在一个接口预设并正确指向“当前预设”。
+        旧配置（只有 base_url/api_key/model）会迁移成名为“默认”的预设。
+        """
+        profiles = self.api_profiles or []
+        if not profiles:
+            profiles = [{
+                "name": "默认",
+                "base_url": self.base_url or "",
+                "api_key": self.api_key or "",
+                "model": self.model or "",
+            }]
+        names = [p.get("name", "") for p in profiles]
+        if not self.active_profile or self.active_profile not in names:
+            self.active_profile = names[0] if names else ""
+        self.api_profiles = profiles
+
+    def get_profile(self, name):
+        """按名字取预设；找不到返回 None。"""
+        for p in self.api_profiles or []:
+            if p.get("name") == name:
+                return p
+        return None
+
+    def profile_names(self):
+        return [p.get("name", "") for p in self.api_profiles or []]
+
+    def set_profile_fields(self, name, base_url, api_key, model):
+        """把字段写进指定预设（不存在则忽略），并同步为当前激活预设。"""
+        p = self.get_profile(name)
+        if p is None:
+            return False
+        p["base_url"] = (base_url or "").strip()
+        p["api_key"] = (api_key or "").strip()
+        p["model"] = (model or "").strip()
+        self.active_profile = name
+        # 顶层镜像字段（引擎/主界面仍读这三个字段）
+        self.base_url = p["base_url"]
+        self.api_key = p["api_key"]
+        self.model = p["model"]
+        return True
 
     # ------------------------------------------------------------------
     def save(self, path=CONFIG_PATH):

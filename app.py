@@ -9,7 +9,7 @@ import os
 import queue
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 import config
 import langs
@@ -39,6 +39,7 @@ class TranslatorApp:
         root.minsize(860, 620)
 
         self.settings = Settings.load()
+        self.settings.ensure_initial_profile()
 
         self.files = []            # [{path, rel}]
         self.worker = None
@@ -498,9 +499,27 @@ class SettingsDialog(tk.Toplevel):
         body = ttk.Frame(self, padding=10)
         body.pack(fill="both", expand=True)
 
+        # ---------- 接口预设（多账号一键切换）----------
+        preset_box = ttk.LabelFrame(body, text="接口预设（可保存多组 API Key / 模型，一键切换）", padding=8)
+        preset_box.pack(fill="x")
+        row_p = ttk.Frame(preset_box)
+        row_p.pack(fill="x")
+        ttk.Label(row_p, text="预设：").pack(side="left")
+        self.var_preset = tk.StringVar()
+        self.cb_preset = ttk.Combobox(row_p, textvariable=self.var_preset, state="readonly",
+                                      values=self.s.profile_names(), width=18)
+        self.cb_preset.pack(side="left")
+        self.cb_preset.bind("<<ComboboxSelected>>", lambda e: self._on_preset_selected())
+        ttk.Button(row_p, text="＋ 新建预设…", command=self._new_preset).pack(side="left", padx=(8, 0))
+        ttk.Button(row_p, text="保存到当前预设", command=self._save_current_to_preset).pack(side="left", padx=4)
+        ttk.Button(row_p, text="删除预设", command=self._delete_preset).pack(side="left")
+        ttk.Label(preset_box,
+                  text="下拉选择预设即一键切换该组的 Base URL / API Key / 模型；可直接编辑下方三项后保存。",
+                  foreground="#666666").pack(fill="x", pady=(4, 0))
+
         # ---------- AI 接口 ----------
-        ai_box = ttk.LabelFrame(body, text="AI 接口（OpenAI 兼容：OpenAI / DeepSeek / 通义 / 智谱 等）", padding=8)
-        ai_box.pack(fill="x")
+        ai_box = ttk.LabelFrame(body, text="当前预设的接口参数", padding=8)
+        ai_box.pack(fill="x", pady=(10, 0))
 
         self.var_url = tk.StringVar(value=self.s.base_url)
         self.var_key = tk.StringVar(value=self.s.api_key)
@@ -545,11 +564,129 @@ class SettingsDialog(tk.Toplevel):
 
         self._refresh_api_state()
 
-        # 内容布局完成后按实际需要自动设定窗口大小（防止三按钮行显示不全）
+        # 预设下拉显示当前激活预设；随后按内容自动设定窗口大小（防止按钮被裁切）
+        self._refresh_preset_box()
         self.update_idletasks()
-        w = max(640, min(self.winfo_reqwidth() + 30, 1024))
+        w = max(680, min(self.winfo_reqwidth() + 30, 1024))
         h = self.winfo_reqheight() + 26   # 预留标题栏等空间
         self.geometry("%dx%d" % (w, h))
+
+    # ------------------------------------------------------------------
+    # 接口预设（多账号一键切换）
+    # ------------------------------------------------------------------
+    def _fields(self):
+        return {
+            "base_url": self.var_url.get().strip(),
+            "api_key": self.var_key.get().strip(),
+            "model": self.var_model.get().strip(),
+        }
+
+    def _dirty(self):
+        """输入框内容与当前预设是否不一致（有未保存修改）。"""
+        p = self.s.get_profile(self.s.active_profile)
+        if p is None:
+            return False
+        f = self._fields()
+        return any(p.get(k, "") != f[k] for k in ("base_url", "api_key", "model"))
+
+    def _load_preset_into_fields(self, name):
+        p = self.s.get_profile(name)
+        if p is None:
+            return
+        self.var_url.set(p.get("base_url", ""))
+        self.var_key.set(p.get("api_key", ""))
+        self.var_model.set(p.get("model", ""))
+
+    def _mirror_from_active(self):
+        """把激活预设同步到顶层 base_url/api_key/model（主界面/引擎读取的字段）。"""
+        p = self.s.get_profile(self.s.active_profile)
+        if p is not None:
+            self.s.base_url = p.get("base_url", "")
+            self.s.api_key = p.get("api_key", "")
+            self.s.model = p.get("model", "")
+
+    def _refresh_preset_box(self):
+        names = self.s.profile_names()
+        self.cb_preset.configure(values=names)
+        cur = self.var_preset.get()
+        if cur not in names:
+            cur = self.s.active_profile if self.s.active_profile in names else (names[0] if names else "")
+            self.var_preset.set(cur)
+
+    def _commit(self, log_msg=None):
+        """写入 config.json 并刷新主界面状态栏。"""
+        self.s.save()
+        self.app._refresh_state_labels()
+        if log_msg:
+            self.app.log(log_msg)
+
+    def _on_preset_selected(self):
+        """一键切换：选中下拉项即切换为该组的 Key/模型。"""
+        name = self.var_preset.get()
+        if not name:
+            return
+        old = self.s.active_profile
+        if old and old != name and self._dirty():
+            keep = messagebox.askyesno(
+                "未保存的修改",
+                "预设「%s」里有尚未保存的修改。\n是否先保存到该预设再切换？\n（选“否”将丢弃修改并直接切换）" % old)
+            if keep:
+                self.s.set_profile_fields(old, **self._fields())
+                self._commit()
+        self.s.active_profile = name
+        self._load_preset_into_fields(name)
+        self._mirror_from_active()
+        self._refresh_api_state()
+        self._commit("已切换到预设：%s" % name)
+
+    def _new_preset(self):
+        taken = set(self.s.profile_names())
+        i = len(taken) + 1
+        suggest = "预设%d" % i
+        while suggest in taken:
+            i += 1
+            suggest = "预设%d" % i
+        name = simpledialog.askstring("新建预设", "请输入预设名称（例如 DeepSeek、OpenAI、通义）：",
+                                      initialvalue=suggest, parent=self)
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        if name in self.s.profile_names():
+            messagebox.showwarning("新建预设", "已存在同名预设：%s" % name)
+            return
+        self.s.api_profiles.append({"name": name, **self._fields()})
+        self.s.active_profile = name
+        self._mirror_from_active()
+        self._refresh_preset_box()
+        self._refresh_api_state()
+        self._commit("已新建预设：%s" % name)
+
+    def _delete_preset(self):
+        name = self.var_preset.get()
+        if not name or len(self.s.profile_names()) <= 1:
+            messagebox.showwarning("删除预设", "至少需要保留一个预设，不能删除。")
+            return
+        if not messagebox.askyesno("删除预设", "确定删除预设「%s」？" % name):
+            return
+        self.s.api_profiles = [p for p in self.s.api_profiles if p.get("name") != name]
+        self.s.active_profile = self.s.profile_names()[0]
+        self._refresh_preset_box()
+        self._load_preset_into_fields(self.s.active_profile)
+        self._mirror_from_active()
+        self._refresh_api_state()
+        self._commit("已删除预设：%s" % name)
+
+    def _save_current_to_preset(self):
+        """把当前输入框内容覆盖保存到当前选中的预设。"""
+        name = self.var_preset.get() or self.s.active_profile
+        if not name:
+            messagebox.showwarning("保存到预设", "请先选择预设。")
+            return
+        self.s.set_profile_fields(name, **self._fields())
+        self._refresh_api_state()
+        self._commit("已保存到预设：%s" % name)
 
     # ------------------------------------------------------------------
     def _toggle_key(self):
@@ -565,16 +702,19 @@ class SettingsDialog(tk.Toplevel):
         self.s.out_encoding = self.var_enc.get()
 
     def _refresh_api_state(self):
-        if self.s.api_configured:
+        f = self._fields()
+        name = self.var_preset.get() or self.s.active_profile or "默认"
+        if f["base_url"] and f["api_key"] and f["model"]:
             self.lbl_api_state.configure(
-                text="✓ 已填写 Base URL / API Key / 模型", foreground="#0a7d0a")
+                text="✓ 预设「%s」已填写 Base URL / API Key / 模型" % name, foreground="#0a7d0a")
         else:
             self.lbl_api_state.configure(
-                text="（三项都填写后即可开始 AI 翻译）", foreground="#888888")
+                text="预设「%s」：三项都填写后即可开始 AI 翻译" % name, foreground="#888888")
 
     def _test_connection(self):
         self._sync_fields()
-        if not self.s.api_configured:
+        f = self._fields()
+        if not (f["base_url"] and f["api_key"] and f["model"]):
             messagebox.showwarning("测试连接", "请先填写 Base URL / API Key / 模型。")
             return
         self.lbl_api_state.configure(text="正在请求模型…", foreground="#aa6600")
@@ -598,9 +738,12 @@ class SettingsDialog(tk.Toplevel):
 
     # ------------------------------------------------------------------
     def _save_and_close(self):
-        self._sync_fields()
-        self.s.save()
+        self.s.out_encoding = self.var_enc.get()
+        name = self.var_preset.get() or self.s.active_profile
+        if not name or name not in self.s.profile_names():
+            name = self.s.profile_names()[0] if self.s.profile_names() else "默认"
+        self.s.set_profile_fields(name, **self._fields())
+        self._commit()
         self.app._apply_settings_to_ui()
-        self.app.log("设置已保存。")
-        self.app._refresh_state_labels()
+        self.app.log("设置已保存（当前预设：%s）" % name)
         self.destroy()
