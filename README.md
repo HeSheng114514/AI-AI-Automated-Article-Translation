@@ -18,20 +18,26 @@
 
 ## 二、AI 接口设置（OpenAI 兼容）
 
-打开 **【设置】**，填写三项：
+打开 **【设置】**，最上面是 **“接口预设”**，可保存多组账号/接口一键切换：
 
-- **Base URL**：不同服务不一样，常见示例：
-  - DeepSeek：`https://api.deepseek.com/v1`
-  - OpenAI：`https://api.openai.com/v1`
-  - 通义千问（DashScope 兼容模式）：`https://dashscope.aliyuncs.com/compatible-mode/v1`
-  - 智谱 GLM：`https://open.bigmodel.cn/api/paas/v4`
-  - Moonshot Kimi：`https://api.moonshot.cn/v1`
-- **API Key**：在对应平台官网申请，形如 `sk-...`
-- **模型**：如 `deepseek-chat`、`gpt-4o-mini`、`glm-4-flash`、`moonshot-v1-8k` 等
+- 每组预设包含：名称 + Base URL + API Key + 模型；
+- 点 **“＋ 新建预设…”** 把当前输入保存为新预设（如 DeepSeek、OpenAI、通义各建一组）；
+- 下拉选择预设即 **一键切换** 该组的 API Key 与模型；
+- 改完输入后点 **“保存到当前预设”** 覆盖保存；切换前若有未保存修改会询问是否先保存；
+- **“删除预设”** 可删除多余组（至少保留一组）；点“保存并关闭”同样生效。
 
+Base URL 常见示例（新建预设时可直接填入）：
+
+- DeepSeek：`https://api.deepseek.com/v1`
+- OpenAI：`https://api.openai.com/v1`
+- 通义千问（DashScope 兼容模式）：`https://dashscope.aliyuncs.com/compatible-mode/v1`
+- 智谱 GLM：`https://open.bigmodel.cn/api/paas/v4`
+- Moonshot Kimi：`https://api.moonshot.cn/v1`
+
+API Key 在对应平台官网申请，形如 `sk-...`；模型如 `deepseek-chat`、`gpt-4o-mini`、`glm-4-flash`、`moonshot-v1-8k` 等。
 填好后点 **“测试连接”**，看到绿色“测试成功”即可使用。
 
-> API Key 保存在程序目录的 `config.json` 里（明文，仅本机使用）。请勿分享该文件。
+> 所有预设的 API Key 都保存在程序目录的 `config.json` 里（明文，仅本机使用）。请勿分享该文件。
 
 ## 三、翻译语言选择（左右两个下拉框）
 
