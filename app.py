@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 import config
 import langs
 from ai_client import AIClient, AIError
+from chat_window import ChatTranslateWindow, stop_all_speech
 from config import Settings
 from engine import Engine, SUPPORTED_EXTS
 
@@ -43,12 +44,25 @@ class TranslatorApp:
 
         self.files = []            # [{path, rel}]
         self.worker = None
+        self.chat_win = None       # 对话翻译窗口（单实例）
         self.cancel_evt = threading.Event()
         self.q = queue.Queue()
 
         self._build_ui()
         self._apply_settings_to_ui()
         self._poll_queue()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_app_close)
+
+    # ==================================================================
+    def _on_app_close(self):
+        """关闭程序时立刻停止后台朗读，避免“软件关了还在读”。"""
+        try:
+            if self.chat_win is not None and self.chat_win.winfo_exists():
+                self.chat_win.stop_speak()
+        except Exception:
+            pass
+        stop_all_speech()
+        self.root.destroy()
 
     # ==================================================================
     # 界面构建
@@ -143,6 +157,7 @@ class TranslatorApp:
         self.btn_stop = ttk.Button(box4, text="■ 停止", command=self.stop, state="disabled")
         self.btn_stop.pack(side="left", padx=6)
         ttk.Button(box4, text="打开输出目录", command=self.open_outdir).pack(side="left")
+        ttk.Button(box4, text="💬 对话翻译", command=self.open_chat).pack(side="left", padx=(12, 0))
         ttk.Button(box4, text="设置…", command=self.open_settings).pack(side="right")
         ttk.Button(box4, text="帮助", command=self.open_help).pack(side="right", padx=6)
 
@@ -456,6 +471,20 @@ class TranslatorApp:
     # ==================================================================
     def open_settings(self):
         SettingsDialog(self)
+
+    # ==================================================================
+    # 对话翻译窗口
+    # ==================================================================
+    def open_chat(self):
+        """打开“对话翻译”面板；已打开则置顶聚焦。返回该窗口。"""
+        if self.chat_win is not None and self.chat_win.winfo_exists():
+            self.chat_win.deiconify()
+            self.chat_win.lift()
+            self.chat_win.focus_set()
+            self.chat_win._refresh_profile()
+            return self.chat_win
+        self.chat_win = ChatTranslateWindow(self)
+        return self.chat_win
 
     # ==================================================================
     # 其它
